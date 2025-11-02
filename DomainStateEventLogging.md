@@ -822,9 +822,11 @@ event = query_latest_event_before(entity_id, timestamp=T-1000)
 state = event.spec.domainObject  # Immediate!
 ```
 
-#### 2. Schema Evolution Without Migration
+#### 2. Platform Evolution Without Migration
 
-Adding a new domain object type (e.g., `Pipeline`):
+**Adding new capabilities to your platform is frictionless.** New domain object types, workflows, and validations can be added without impacting existing functionality.
+
+**Example: Adding a Pipeline domain object:**
 
 ```yaml
 # New event type
@@ -843,6 +845,20 @@ spec:
 - Existing queries filter by `PK` pattern or `GSI1PK` event type
 - New `PipelineAppliedEvent` events have different keys
 - No migrations, no downtime, no breaking changes
+
+**Reacting to Multidimensional Stakeholder Needs:**
+
+Platform engineering teams face evolving requirements from diverse stakeholders—clients, security teams, finance, partners, cloud providers—often with needs that couldn't have been anticipated:
+
+- **Compliance team demands** SOC2 audit trails → Add `ComplianceCheckEvent` without touching deployment workflows
+- **Security requires** approval gates → Introduce `SecurityApprovalEvent` without migrating existing data
+- **Finance needs** cost attribution → Add `CostAllocationEvent` alongside existing tracking
+- **Partners request** webhook integrations → Insert `WebhookDeliveryEvent` without breaking current systems
+- **Cloud provider** changes APIs → Add new domain types without rewriting existing ones
+
+**Key insight**: You cannot anticipate every requirement at design time. DSEL's key-based isolation enables platforms to **adapt to multidimensional stakeholder needs as they emerge**, without the engineering overhead of schema migrations, data backfills, or coordinated service deployments.
+
+This adaptability is critical for platforms serving diverse stakeholders—each with evolving needs that emerge over time, often in response to regulatory changes, business pivots, or partner requirements you couldn't have predicted.
 
 #### 3. Built-In Audit Trail
 

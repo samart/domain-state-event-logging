@@ -80,6 +80,20 @@ kind: CanaryDeploymentValidatedEvent
 
 This isn't just schema evolution—it's **platform capability evolution**. Add entire new workflows, approval processes, deployment strategies, or domain objects without coordinating changes across your codebase.
 
+### Reacting to Unanticipated Requirements
+
+Platforms must respond to demands from multiple stakeholders you never anticipated:
+
+- **Clients demand** new compliance validations? Add `ComplianceCheckEvent` without touching existing deployment workflows
+- **Security team requires** approval gates? Introduce `SecurityApprovalEvent` without migrating existing data
+- **Finance needs** cost attribution? Add `CostAllocationEvent` alongside existing tracking
+- **Partners need** webhook notifications? Insert `NotificationEvent` without breaking current integrations
+- **Cloud providers change** their APIs? Add new domain types without rewriting existing ones
+
+**The key insight**: You can't anticipate every requirement at design time. DSEL lets your platform **adapt to multidimensional stakeholder needs** as they emerge, without the engineering overhead of schema migrations, data backfills, or coordinated deployments across services.
+
+This is critical for platforms serving diverse stakeholders—clients, internal teams, partners, and providers—each with evolving needs you couldn't have predicted.
+
 ## Who Should Read This
 
 - Platform engineers building internal developer platforms
