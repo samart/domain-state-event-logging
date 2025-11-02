@@ -734,18 +734,15 @@ This makes aggregates themselves a valuable source of truth for understanding sy
 
 DSEL uses a single DynamoDB table to store all events with a multi-dimensional key structure:
 
-```mermaid
-erDiagram
-    EVENT_TABLE {
-        string PK "Partition Key"
-        string SK "Sort Key"
-        string GSI1PK "Global Secondary Index 1 PK"
-        string GSI1SK "Global Secondary Index 1 SK"
-        string GSI2PK "Global Secondary Index 2 PK"
-        string GSI2SK "Global Secondary Index 2 SK"
-        json EventData "Complete event payload"
-    }
-```
+| Attribute | Type | Purpose |
+|-----------|------|---------|
+| **PK** | String | Partition Key - primary entity identifier |
+| **SK** | String | Sort Key - timestamp and event ordering |
+| **GSI1PK** | String | Global Secondary Index 1 PK - event type filtering |
+| **GSI1SK** | String | Global Secondary Index 1 SK - secondary sorting |
+| **GSI2PK** | String | Global Secondary Index 2 PK - correlation queries |
+| **GSI2SK** | String | Global Secondary Index 2 SK - execution queries |
+| **EventData** | JSON | Complete event payload (metadata + spec) |
 
 ### 7.2 Key Design Patterns
 
