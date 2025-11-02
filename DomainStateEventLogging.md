@@ -4,7 +4,7 @@
 
 **Abstract**
 
-This paper presents Domain State Event Logging (DSEL), a pragmatic synthesis of Domain-Driven Design and Event Sourcing, storing complete domain state in events rather than deltas. It pairs naturally with declarative APIs (common in platform engineering) but is independent of the interaction model. Unlike traditional Event Sourcing which stores deltas and requires complex replay logic, or CQRS which maintains separate read/write models, DSEL stores complete domain object state snapshots within event envelopes—trading storage cost for operational simplicity. This approach emerged from building multiple mission-critical production platforms serving thousands of users globally, with proven implementations on both MongoDB and DynamoDB. The pattern includes multi-resolution event streams (fine-grained domain events and coarse-grained aggregates), multi-tier read architecture with graceful fallback mechanisms, and support for global distribution via datastores like DynamoDB Global Tables, Cassandra, or Spanner. We demonstrate how this battle-tested pattern enables rapid platform evolution—adding new workflows, event types, and capabilities without downtime or breaking changes—alongside temporal queries, audit trails, and efficient analytics while maintaining query stability. This makes DSEL particularly valuable for platform engineering teams building internal developer platforms (whether using declarative Kubernetes-style APIs or other interaction models) that must evolve rapidly to meet changing business requirements.
+This paper presents Domain State Event Logging (DSEL), a pragmatic synthesis of Domain-Driven Design and Event Sourcing, storing complete domain state in events rather than deltas. It pairs naturally with declarative APIs (common in platform engineering) but is independent of the interaction model. Unlike traditional Event Sourcing which stores deltas and requires complex replay logic, or CQRS which maintains separate read/write models, DSEL stores complete domain object state snapshots within event envelopes—trading storage cost for operational simplicity. A key aspect of this approach is wrapping domain objects in action-based events (e.g., `ArtifactAppliedEvent`, `DeploymentValidatedEvent`), providing clear causality (what caused this state), workflow visibility (event sequences tell the workflow story), and last-actor tracking (what last acted on the domain). This approach emerged from building multiple mission-critical production platforms serving thousands of users globally, with proven implementations on both MongoDB and DynamoDB. The pattern includes multi-resolution event streams (fine-grained domain events and coarse-grained aggregates), multi-tier read architecture with graceful fallback mechanisms, and support for global distribution via datastores like DynamoDB Global Tables, Cassandra, or Spanner. We demonstrate how this battle-tested pattern enables rapid platform evolution—adding new workflows, event types, and capabilities without downtime or breaking changes—alongside temporal queries, audit trails, and efficient analytics while maintaining query stability. This makes DSEL particularly valuable for platform engineering teams building internal developer platforms (whether using declarative Kubernetes-style APIs or other interaction models) that must evolve rapidly to meet changing business requirements.
 
 ---
 
@@ -34,16 +34,17 @@ Modern platform engineering demands systems that are:
 - **Analyzable**: Historical data accessible for analytics and compliance
 - **Declarative**: Users express desired state, not imperative procedures
 
-Traditional persistence patterns—CRUD databases, Event Sourcing, and CQRS—each address some of these requirements but fall short in specific ways for platform engineering contexts. This paper introduces Domain State Event Logging (DSEL), a pattern that emerged from building multiple production developer platforms, which combines the strengths of these approaches while addressing their limitations. Instead of storing event deltas (traditional Event Sourcing) or separating reads from writes (CQRS), DSEL stores **complete domain object state within event envelopes**. This storage pattern pairs naturally with declarative APIs (like Kubernetes manifests) but is independent of the interaction model—the key innovation is what's stored, not how users interact. DSEL has been successfully deployed in multiple mission-critical production systems serving thousands of users globally, with proven implementations using both MongoDB and DynamoDB as backing datastores.
+Traditional persistence patterns—CRUD databases, Event Sourcing, and CQRS—each address some of these requirements but fall short in specific ways for platform engineering contexts. This paper introduces Domain State Event Logging (DSEL), a pattern that emerged from building multiple production developer platforms, which combines the strengths of these approaches while addressing their limitations. Instead of storing event deltas (traditional Event Sourcing) or separating reads from writes (CQRS), DSEL stores **complete domain object state within event envelopes**. This storage pattern pairs naturally with declarative APIs (like Kubernetes manifests) but is independent of the interaction model—the key aspect is what's stored, not how users interact. DSEL has been successfully deployed in multiple mission-critical production systems serving thousands of users globally, with proven implementations using both MongoDB and DynamoDB as backing datastores.
 
 ### Key Contributions
 
-1. **Request-Response Event Pairs**: Capturing both user intent and system response as separate events when they contain distinct information
-2. **Full-State Event Envelopes**: Embedding complete domain object state within events—not deltas, not commands—eliminating replay complexity. Events describe "what IS" rather than "what CHANGED," enabling direct state queries at any point in time without reconstruction
-3. **Multi-Resolution Event Streams**: Maintaining both fine-grained domain events and coarse-grained aggregate meta-streams
-4. **Multi-Tier Read Architecture**: Leveraging DAX, DynamoDB, and OpenSearch for optimal latency at each query tier with graceful fallback
-5. **Global Distribution**: DynamoDB Global Tables or Cassandra enable globally consistent platform state with regional OpenSearch clusters
-6. **Platform Evolution Without Breaking Changes**: Add new workflows, event types, and domain objects without downtime, migrations, or impacting existing queries
+1. **Domain-Wrapped-in-Action Event Pattern**: Wrapping complete domain state in action-based events (e.g., `ArtifactAppliedEvent`, `DeploymentValidatedEvent`) provides clear causality, workflow visibility, and last-actor tracking—enabling understanding of "what caused this event" and "what last acted on this domain"
+2. **Request-Response Event Pairs**: Capturing both user intent and system response as separate events when they contain distinct information
+3. **Full-State Event Envelopes**: Embedding complete domain object state within events—not deltas, not commands—eliminating replay complexity. Events describe "what IS" rather than "what CHANGED," enabling direct state queries at any point in time without reconstruction
+4. **Multi-Resolution Event Streams**: Maintaining both fine-grained domain events and coarse-grained aggregate meta-streams
+5. **Multi-Tier Read Architecture**: Leveraging DAX, DynamoDB, and OpenSearch for optimal latency at each query tier with graceful fallback
+6. **Global Distribution**: DynamoDB Global Tables or Cassandra enable globally consistent platform state with regional OpenSearch clusters
+7. **Platform Evolution Without Breaking Changes**: Add new workflows, event types, and domain objects without downtime, migrations, or impacting existing queries
 
 ---
 
@@ -309,6 +310,60 @@ Events follow a consistent naming pattern that indicates intent vs. outcome:
 **Storage Decision Rules:**
 - **Intent Event**: Stored only if it contains unique information not in the outcome event (e.g., user comments, client-side metadata)
 - **Outcome Event**: Always stored, contains system-generated metadata, validation results, timestamps, IDs
+
+**Semantic Meaning: Domain Wrapped in Action**
+
+The event naming pattern `{Domain}{Action}Event` is not arbitrary—it provides critical causality and workflow visibility:
+
+```yaml
+# The domain (Artifact) is wrapped in an action (Applied)
+kind: ArtifactAppliedEvent
+spec:
+  artifact:          # <- Complete domain state
+    name: terraform-vpc-module
+    version: "1.1"
+    # ...
+```
+
+**Why This Matters:**
+
+1. **Clear Causality**: The event name immediately tells you *what caused* this domain state to exist
+   - `ArtifactAppliedEvent` → someone applied an artifact
+   - `ArtifactValidatedEvent` → validation workflow ran
+   - `DeploymentDeployedEvent` → deployment workflow completed
+
+2. **Workflow Visibility**: Events can be named to match workflow stages
+   ```yaml
+   # Approval workflow events
+   kind: ArtifactApprovalRequestedEvent
+   kind: ArtifactApprovalGrantedEvent
+   kind: ArtifactAppliedEvent
+   ```
+   The event sequence tells the workflow story without external state.
+
+3. **Last Actor Tracking**: The latest event kind reveals what last acted on the domain
+   ```bash
+   # Query: "What last happened to artifact-123?"
+   # Latest event: ArtifactDeployedEvent
+   # Answer: The deployment workflow last acted on it
+   ```
+
+**Contrast with Traditional Event Sourcing:**
+
+Traditional Event Sourcing stores *commands* (what to do) or *deltas* (what changed):
+```yaml
+# Command-based (intent, not outcome)
+kind: ApplyArtifactCommand
+payload:
+  name: terraform-vpc-module
+
+# Delta-based (changes, not complete state)
+kind: ArtifactVersionUpdated
+changes:
+  version: { old: "1.0", new: "1.1" }
+```
+
+DSEL wraps the *complete domain state* in an *outcome action*, providing both **causality** (what happened) and **completeness** (full state at that moment).
 
 ---
 

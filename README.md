@@ -14,9 +14,16 @@ If you're building platform engineering systems (internal developer platforms, K
 
 **DSEL might be your answer.** This pattern has been battle-tested in multiple mission-critical production systems serving thousands of users globally, with proven implementations on both MongoDB and DynamoDB.
 
-## Key Innovation
+## Key Approach
 
-Instead of storing event deltas (traditional Event Sourcing) or maintaining separate projections (CQRS), DSEL stores **complete domain object state snapshots within event envelopes**. This trades storage cost for operational simplicity—a worthwhile tradeoff in 2025 when storage is cheap but engineer time is expensive.
+Instead of storing event deltas (traditional Event Sourcing) or maintaining separate projections (CQRS), DSEL stores **complete domain object state snapshots within event envelopes**.
+
+A key aspect of this approach is wrapping domain objects in **action-based events** (like `ArtifactAppliedEvent`, `DeploymentValidatedEvent`). This provides:
+- **Clear causality**: The event name tells you what caused this state
+- **Workflow visibility**: Event sequences tell the workflow story
+- **Last-actor tracking**: Query the latest event to see what last acted on the domain
+
+This trades storage cost for operational simplicity—a worthwhile tradeoff in 2025 when storage is cheap but engineer time is expensive.
 
 ## What You'll Learn
 
@@ -24,6 +31,7 @@ Instead of storing event deltas (traditional Event Sourcing) or maintaining sepa
 
 The paper covers:
 
+- **Domain-Wrapped-in-Action Pattern**: How wrapping domain state in action events provides causality, workflow visibility, and last-actor tracking
 - **Full-State Event Envelopes**: How to eliminate replay complexity while maintaining temporal history
 - **Multi-Resolution Event Streams**: Fine-grained domain events + coarse-grained aggregates for efficient queries
 - **Multi-Tier Read Architecture**: DAX/DynamoDB/OpenSearch with graceful fallback for optimal latency
