@@ -8,7 +8,7 @@ If you're building platform engineering systems (internal developer platforms, K
 
 - **Event Sourcing complexity**: Tired of rebuilding state through event replay?
 - **CQRS overhead**: Don't want to maintain separate read/write models?
-- **Schema evolution**: Need to add new domain objects without breaking existing queries?
+- **Platform evolution**: Need to rapidly add new workflows, domain objects, and capabilities without downtime or breaking existing functionality?
 - **Audit requirements**: Need complete temporal history for compliance?
 - **Global distribution**: Want multi-region consistency without coordination complexity?
 
@@ -28,7 +28,7 @@ The paper covers:
 - **Multi-Resolution Event Streams**: Fine-grained domain events + coarse-grained aggregates for efficient queries
 - **Multi-Tier Read Architecture**: DAX/DynamoDB/OpenSearch with graceful fallback for optimal latency
 - **Global Distribution**: Multi-region consistency using DynamoDB Global Tables, Cassandra, or Spanner
-- **Query-Stable Schema Evolution**: Add new domain types without impacting existing queries
+- **Platform Evolution Made Easy**: Add new workflows, event types, and domain objects without downtime, migrations, or breaking existing queries
 - **Production Track Record**: Real metrics from systems serving thousands of users
 
 ## Quick Example
@@ -53,6 +53,32 @@ spec:
 ```
 
 **Result**: Query latest state directly from events—no replay needed.
+
+## Platform Evolution Without Breaking Changes
+
+DSEL's key-based isolation design means you can evolve your platform rapidly:
+
+**Add New Workflows**:
+```yaml
+# Day 1: Only have artifact deployment
+kind: ArtifactAppliedEvent
+
+# Day 30: Add approval workflow - existing queries unaffected
+kind: ApprovalRequestedEvent
+kind: ApprovalGrantedEvent
+
+# Day 60: Add canary deployment - still no migration needed
+kind: CanaryDeploymentStartedEvent
+kind: CanaryDeploymentValidatedEvent
+```
+
+**Why This Matters**:
+- **No database migrations**: New event types use different partition keys
+- **No downtime**: Existing queries continue working unchanged
+- **No code changes required**: Old workflows keep functioning
+- **Rapid iteration**: Ship new platform capabilities in hours, not weeks
+
+This isn't just schema evolution—it's **platform capability evolution**. Add entire new workflows, approval processes, deployment strategies, or domain objects without coordinating changes across your codebase.
 
 ## Who Should Read This
 

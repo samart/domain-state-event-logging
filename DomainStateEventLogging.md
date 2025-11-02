@@ -4,7 +4,7 @@
 
 **Abstract**
 
-This paper presents Domain State Event Logging (DSEL), a pragmatic synthesis of Event Sourcing, CQRS, and Domain-Driven Design, optimized for platform engineering contexts where operational simplicity and developer experience matter more than storage optimization. Unlike traditional Event Sourcing which stores deltas and requires complex replay logic, or CQRS which maintains separate read/write models, DSEL stores complete domain object state snapshots within event envelopes—trading storage cost for operational simplicity. The pattern pairs naturally with declarative APIs (Kubernetes-style manifests) for platform engineering use cases. This approach emerged from building multiple mission-critical production platforms serving thousands of users globally, with proven implementations on both MongoDB and DynamoDB. The pattern includes multi-resolution event streams (fine-grained domain events and coarse-grained aggregates), multi-tier read architecture with graceful fallback mechanisms, and support for global distribution via datastores like DynamoDB Global Tables, Cassandra, or Spanner. We demonstrate how this battle-tested pattern enables schema evolution, temporal queries, audit trails, and efficient analytics while maintaining query stability—making it particularly valuable for platform engineering teams building Kubernetes-style internal developer platforms.
+This paper presents Domain State Event Logging (DSEL), a pragmatic synthesis of Event Sourcing, CQRS, and Domain-Driven Design, optimized for platform engineering contexts where operational simplicity and developer experience matter more than storage optimization. Unlike traditional Event Sourcing which stores deltas and requires complex replay logic, or CQRS which maintains separate read/write models, DSEL stores complete domain object state snapshots within event envelopes—trading storage cost for operational simplicity. The pattern pairs naturally with declarative APIs (Kubernetes-style manifests) for platform engineering use cases. This approach emerged from building multiple mission-critical production platforms serving thousands of users globally, with proven implementations on both MongoDB and DynamoDB. The pattern includes multi-resolution event streams (fine-grained domain events and coarse-grained aggregates), multi-tier read architecture with graceful fallback mechanisms, and support for global distribution via datastores like DynamoDB Global Tables, Cassandra, or Spanner. We demonstrate how this battle-tested pattern enables rapid platform evolution—adding new workflows, event types, and capabilities without downtime or breaking changes—alongside temporal queries, audit trails, and efficient analytics while maintaining query stability. This makes DSEL particularly valuable for platform engineering teams building Kubernetes-style internal developer platforms that must evolve rapidly to meet changing business requirements.
 
 ---
 
@@ -44,7 +44,7 @@ Traditional persistence patterns—CRUD databases, Event Sourcing, and CQRS—ea
 4. **Multi-Tier Read Architecture**: Leveraging DAX, DynamoDB, and OpenSearch for optimal latency at each query tier with graceful fallback
 5. **Global Distribution**: DynamoDB Global Tables or Cassandra enable globally consistent platform state with regional OpenSearch clusters
 6. **Declarative Event Semantics**: Kubernetes-inspired API patterns applied to event-driven persistence
-7. **Query-Stable Schema Evolution**: New domain types added without impacting existing queries
+7. **Platform Evolution Without Breaking Changes**: Add new workflows, event types, and domain objects without downtime, migrations, or impacting existing queries
 
 ---
 
@@ -2342,7 +2342,7 @@ Domain State Event Logging (DSEL) represents a pragmatic evolution of event-driv
 1. **Full-State Capture**: Eliminates replay complexity while maintaining temporal history
 2. **Declarative Semantics**: Kubernetes-style API experience for platform users
 3. **Multi-Resolution Streams**: Efficient queries at different granularities via aggregates
-4. **Query-Stable Evolution**: New domain objects added without impacting existing queries
+4. **Platform Evolution Without Breaking Changes**: New workflows, event types, and domain objects added without downtime, migrations, or impacting existing queries
 5. **Multi-Tier Read Architecture**: DAX for microsecond-latency critical reads, DynamoDB for consistency, OpenSearch for search/analytics with graceful fallback
 6. **Global Distribution**: DynamoDB Global Tables or Cassandra enable globally consistent platform state across regions, with regional OpenSearch clusters for local-latency search
 7. **Integrated Analytics**: Native streaming to OpenSearch, data lakes, and downstream systems
