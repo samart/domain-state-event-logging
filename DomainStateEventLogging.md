@@ -4,7 +4,7 @@
 
 **Abstract**
 
-This paper presents Domain State Event Logging (DSEL), a pragmatic synthesis of Event Sourcing, CQRS, and Domain-Driven Design, optimized for platform engineering contexts where operational simplicity and developer experience matter more than storage optimization. Unlike traditional Event Sourcing which stores deltas and requires complex replay logic, or CQRS which maintains separate read/write models, DSEL stores complete domain object state snapshots within event envelopes—trading storage cost for operational simplicity. The pattern pairs naturally with declarative APIs (Kubernetes-style manifests) for platform engineering use cases. This approach emerged from building multiple mission-critical production platforms serving thousands of users globally, with proven implementations on both MongoDB and DynamoDB. The pattern includes multi-resolution event streams (fine-grained domain events and coarse-grained aggregates), multi-tier read architecture with graceful fallback mechanisms, and support for global distribution via datastores like DynamoDB Global Tables, Cassandra, or Spanner. We demonstrate how this battle-tested pattern enables rapid platform evolution—adding new workflows, event types, and capabilities without downtime or breaking changes—alongside temporal queries, audit trails, and efficient analytics while maintaining query stability. This makes DSEL particularly valuable for platform engineering teams building Kubernetes-style internal developer platforms that must evolve rapidly to meet changing business requirements.
+This paper presents Domain State Event Logging (DSEL), a pragmatic synthesis of Domain-Driven Design and Event Sourcing, storing complete domain state in events rather than deltas. It pairs naturally with declarative APIs (common in platform engineering) but is independent of the interaction model. Unlike traditional Event Sourcing which stores deltas and requires complex replay logic, or CQRS which maintains separate read/write models, DSEL stores complete domain object state snapshots within event envelopes—trading storage cost for operational simplicity. This approach emerged from building multiple mission-critical production platforms serving thousands of users globally, with proven implementations on both MongoDB and DynamoDB. The pattern includes multi-resolution event streams (fine-grained domain events and coarse-grained aggregates), multi-tier read architecture with graceful fallback mechanisms, and support for global distribution via datastores like DynamoDB Global Tables, Cassandra, or Spanner. We demonstrate how this battle-tested pattern enables rapid platform evolution—adding new workflows, event types, and capabilities without downtime or breaking changes—alongside temporal queries, audit trails, and efficient analytics while maintaining query stability. This makes DSEL particularly valuable for platform engineering teams building internal developer platforms (whether using declarative Kubernetes-style APIs or other interaction models) that must evolve rapidly to meet changing business requirements.
 
 ---
 
@@ -34,17 +34,16 @@ Modern platform engineering demands systems that are:
 - **Analyzable**: Historical data accessible for analytics and compliance
 - **Declarative**: Users express desired state, not imperative procedures
 
-Traditional persistence patterns—CRUD databases, Event Sourcing, and CQRS—each address some of these requirements but fall short in specific ways for platform engineering contexts. This paper introduces Domain State Event Logging (DSEL), a pattern that emerged from building multiple production developer platforms, which combines the strengths of these approaches while addressing their limitations. DSEL has been successfully deployed in multiple mission-critical production systems serving thousands of users globally, with proven implementations using both MongoDB and DynamoDB as backing datastores.
+Traditional persistence patterns—CRUD databases, Event Sourcing, and CQRS—each address some of these requirements but fall short in specific ways for platform engineering contexts. This paper introduces Domain State Event Logging (DSEL), a pattern that emerged from building multiple production developer platforms, which combines the strengths of these approaches while addressing their limitations. Instead of storing event deltas (traditional Event Sourcing) or separating reads from writes (CQRS), DSEL stores **complete domain object state within event envelopes**. This storage pattern pairs naturally with declarative APIs (like Kubernetes manifests) but is independent of the interaction model—the key innovation is what's stored, not how users interact. DSEL has been successfully deployed in multiple mission-critical production systems serving thousands of users globally, with proven implementations using both MongoDB and DynamoDB as backing datastores.
 
 ### Key Contributions
 
 1. **Request-Response Event Pairs**: Capturing both user intent and system response as separate events when they contain distinct information
-2. **Full-State Event Envelopes**: Embedding complete domain object state within events, eliminating replay complexity
+2. **Full-State Event Envelopes**: Embedding complete domain object state within events—not deltas, not commands—eliminating replay complexity. Events describe "what IS" rather than "what CHANGED," enabling direct state queries at any point in time without reconstruction
 3. **Multi-Resolution Event Streams**: Maintaining both fine-grained domain events and coarse-grained aggregate meta-streams
 4. **Multi-Tier Read Architecture**: Leveraging DAX, DynamoDB, and OpenSearch for optimal latency at each query tier with graceful fallback
 5. **Global Distribution**: DynamoDB Global Tables or Cassandra enable globally consistent platform state with regional OpenSearch clusters
-6. **Declarative Event Semantics**: Kubernetes-inspired API patterns applied to event-driven persistence
-7. **Platform Evolution Without Breaking Changes**: Add new workflows, event types, and domain objects without downtime, migrations, or impacting existing queries
+6. **Platform Evolution Without Breaking Changes**: Add new workflows, event types, and domain objects without downtime, migrations, or impacting existing queries
 
 ---
 
@@ -83,7 +82,9 @@ Platform teams need to:
 - Generate reports on platform usage
 - Debug production issues by reviewing historical state
 
-### 2.2 Limitations of Traditional Approaches
+### 2.2 Complexity of Traditional Approaches for Platform Engineering
+
+While CRUD, Event Sourcing, and CQRS can all work for platform engineering, each introduces complexity that may not be necessary for the use case. DSEL emerged from the observation that these patterns can be simplified when building manifest-driven platforms.
 
 #### CRUD (Create, Read, Update, Delete)
 ```mermaid
@@ -94,11 +95,13 @@ graph LR
     style B fill:#f96,stroke:#333
 ```
 
-**Limitations:**
-- ❌ No temporal history (updates overwrite previous state)
-- ❌ No distinction between intent and outcome
-- ❌ Schema evolution requires migrations
-- ❌ No audit trail without additional systems
+**Challenges for Platform Engineering:**
+- 💭 **No temporal history**: Updates overwrite previous state—you can add audit tables, but now you're maintaining two models
+- 💭 **No intent vs. outcome**: Can't distinguish what user requested vs. what system applied—requires separate request logging
+- 💭 **Schema migrations**: Adding new domain objects requires schema changes and data migrations
+- 💭 **Audit trail overhead**: Need separate audit system (triggers, shadow tables, CDC)
+
+**Can you make it work?** Yes, but requires additional infrastructure (audit tables, CDC pipelines, migration tooling).
 
 #### Event Sourcing
 ```mermaid
@@ -110,11 +113,13 @@ graph LR
     style C fill:#f96,stroke:#333
 ```
 
-**Limitations:**
-- ❌ State reconstruction requires replaying all events (performance cost)
-- ❌ Query complexity increases with event history length
-- ❌ Schema evolution of old events is complex
-- ❌ Difficult to query historical state directly
+**Challenges for Platform Engineering:**
+- 💭 **Replay complexity**: Getting current state requires replaying all events—can optimize with snapshots, but adds complexity
+- 💭 **Performance degradation**: Query time grows with event history—mitigated by periodic snapshots, but requires snapshot management
+- 💭 **Schema evolution**: Old event versions must be upconverted during replay—manageable but requires careful versioning
+- 💭 **Historical queries**: "What was state at T-1000?" still requires replay up to that point
+
+**Can you make it work?** Absolutely—many production systems do. But requires replay optimization, snapshot strategies, and event versioning infrastructure.
 
 #### CQRS (Command Query Responsibility Segregation)
 ```mermaid
@@ -130,11 +135,23 @@ graph TB
     style F fill:#f96,stroke:#333
 ```
 
-**Limitations:**
-- ❌ Read model synchronization complexity
-- ❌ Multiple projections to maintain
-- ❌ Eventual consistency challenges
-- ❌ Still requires event replay for new read models
+**Challenges for Platform Engineering:**
+- 💭 **Projection maintenance**: Each query pattern needs its own read model—can be hundreds for complex platforms
+- 💭 **Synchronization complexity**: Keeping projections up-to-date with event stream—requires robust stream processing
+- 💭 **Eventual consistency**: Read models lag behind writes—manageable but requires careful UX design
+- 💭 **New read models**: Adding new query patterns requires building and backfilling projections from event history
+
+**Can you make it work?** Yes, and it scales well. But the operational overhead of maintaining multiple projections can outweigh the benefits for platform engineering use cases.
+
+#### The Platform Engineering Reality
+
+For platform engineering use cases (especially those with evolving schemas and temporal query requirements), these patterns work but introduce complexity:
+
+- **Replay engines and snapshot management** (Event Sourcing)
+- **Multiple projection maintenance** (CQRS)
+- **Separate audit infrastructure** (CRUD)
+
+**DSEL's insight**: When domain objects are expressed as complete state (whether through declarative manifests, API payloads, or other means), you can store that complete state in events, eliminating replay/projection complexity while maintaining temporal history. This works particularly well with declarative APIs but applies to any system where complete state snapshots are meaningful. This trades storage cost (cheap in 2025) for operational simplicity (engineer time is expensive).
 
 ---
 
@@ -186,8 +203,8 @@ graph TB
 
 ### 3.3 Key Principles
 
-1. **Declarative State, Not Imperative Commands**: Users declare desired state (like Kubernetes manifests)
-2. **Full State Capture**: Each event contains complete domain object state at that moment
+1. **Complete Domain State, Not Deltas or Commands**: Events store the full domain object state as the payload—not deltas (changes), not commands (what to do), but complete snapshots (what IS)
+2. **Request-Response Event Pairs**: Capture user intent and system outcome as separate events when they contain distinct information
 3. **Selective Intent Storage**: Intent events stored only when they contain information not in response
 4. **Response Enrichment**: Response events contain system-generated metadata and validation results
 5. **Multi-Resolution Streams**: Both fine-grained events and coarse-grained aggregates coexist
@@ -275,6 +292,8 @@ spec:
     phase: COMPLETED
     lastUpdated: 2025-01-15T10:30:00Z
 ```
+
+**Why This Matters**: The domain object (`spec.artifact`) is stored in its entirety—not as a delta, not as command parameters, but as complete state. This is the core innovation: the payload IS the domain state at that moment in time. Query the latest event, get the current state. Query historical events, get state at any point in time. No reconstruction, no replay, no projections.
 
 ### 4.3 Event Naming Conventions
 
@@ -534,6 +553,178 @@ sequenceDiagram
 - Aggregates can be **recomputed** by replaying fine-grained events
 - Aggregates **enrich** with external data (AWS APIs, other services)
 - Aggregates **summarize** event streams to reduce query load
+
+### 6.5 Aggregates vs. Projections: A Critical Distinction
+
+DSEL aggregates share superficial similarities with CQRS projections or database views, but have fundamental differences that make them more powerful for platform engineering:
+
+#### Similarities to Traditional Projections
+
+Like projections and materialized views, aggregates:
+1. **Derive from source data**: Computed from fine-grained domain events
+2. **Optimize queries**: Provide efficient access to summarized information
+3. **Can be recomputed**: Regenerable from the source of truth
+
+#### Critical Differences
+
+**1. Aggregates ARE Immutable Events**
+
+Traditional projections mutate in place; DSEL aggregates append new events:
+
+```yaml
+# Traditional Projection (Mutable)
+UPDATE execution_status_view
+SET phase = 'COMPLETED', end_time = NOW()
+WHERE execution_id = 'exec-123'
+# Old state lost
+
+# DSEL Aggregate (Immutable, Append-Only)
+# T1: First aggregate event
+kind: ExecutionStatusAggregate
+timestamp: 2025-01-15T10:30:00Z
+spec:
+  summary:
+    phase: PENDING
+    startTime: 2025-01-15T10:30:00Z
+
+# T2: New aggregate event (doesn't replace T1)
+kind: ExecutionStatusAggregate
+timestamp: 2025-01-15T10:35:00Z
+spec:
+  summary:
+    phase: COMPLETED
+    startTime: 2025-01-15T10:30:00Z
+    endTime: 2025-01-15T10:35:00Z
+# Both events preserved
+```
+
+**2. Temporal History is First-Class**
+
+Database views only expose current state. DSEL aggregates preserve every historical snapshot:
+
+```python
+# Query: "What was the aggregate summary at 10:32?"
+aggregate_at_10_32 = get_state_at_time(
+    'AGGREGATE#ExecutionStatusAggregate#exec-123',
+    '2025-01-15T10:32:00Z'
+)
+# Returns: ExecutionStatusAggregate from T1 (phase=PENDING)
+
+# Query: "What does the aggregate show now?"
+aggregate_now = get_latest_state('AGGREGATE#ExecutionStatusAggregate#exec-123')
+# Returns: ExecutionStatusAggregate from T2 (phase=COMPLETED)
+
+# You can see WHAT the aggregate thought at ANY point in time
+```
+
+This temporal history enables powerful debugging scenarios:
+
+```python
+# "The deployment showed as COMPLETED at 10:35, but now shows FAILED. What happened?"
+
+aggregate_at_10_35 = get_state_at_time('AGGREGATE#...', '2025-01-15T10:35:00Z')
+# Shows: phase=COMPLETED, resourceCount=42
+
+aggregate_now = get_latest_state('AGGREGATE#...')
+# Shows: phase=FAILED, resourceCount=38, error="4 resources terminated"
+
+# You can trace the aggregate's evolution, not just the underlying events
+```
+
+**3. Same Event Store, Different Keys**
+
+CQRS projections typically live in separate databases. DSEL aggregates use the same DynamoDB table with different partition keys:
+
+```
+Fine-grained events: PK="DEPLOYMENT#exec-123#app-001"
+Aggregate events:    PK="AGGREGATE#ExecutionStatusAggregate#exec-123"
+
+Both in same table, both queryable via same patterns
+```
+
+**4. Enrichment with External State**
+
+Traditional views typically aggregate existing data. DSEL aggregates can embed external API calls, capturing point-in-time snapshots of external system state:
+
+```yaml
+spec:
+  enrichment:
+    # Fetched from AWS API at aggregate creation time
+    awsResources:
+      - arn: arn:aws:ec2:us-east-1:123:vpc/vpc-abc
+        status: ACTIVE        # Status as of THIS aggregate's timestamp
+        region: us-east-1
+
+    costs:
+      estimatedMonthly: 150.00  # Cost estimate captured at this moment
+      currency: USD
+
+    # This enrichment is frozen in time with the aggregate event
+```
+
+If AWS resources are later deleted or costs change, this aggregate still reflects what the system knew at that timestamp.
+
+**5. Self-Contained Snapshots**
+
+Database views reference other tables and require joins. DSEL aggregates are complete snapshots:
+
+```sql
+-- Traditional view requires join at query time
+CREATE VIEW execution_summary AS
+  SELECT e.execution_id, e.phase, COUNT(r.resource_id) as resource_count
+  FROM executions e
+  LEFT JOIN resources r ON e.execution_id = r.execution_id
+  GROUP BY e.execution_id;
+
+-- Query requires live join
+SELECT * FROM execution_summary WHERE execution_id = 'exec-123';
+```
+
+```yaml
+# DSEL aggregate is self-contained
+kind: ExecutionStatusAggregate
+spec:
+  summary:
+    phase: COMPLETED
+  enrichment:
+    resourceCount: 42  # Captured, not computed at query time
+    awsResources: [...]  # Full resource details embedded
+```
+
+#### Mental Model: Versioned Materialized Views
+
+The best analogy for DSEL aggregates is: **"Versioned, immutable materialized views stored as events"**
+
+```
+Traditional Materialized View:
+  REFRESH MATERIALIZED VIEW execution_summary;
+  → Replaces old state, history lost
+
+DSEL Aggregate Events:
+  ExecutionStatusAggregate@T1 (event_count=5, phase=PENDING)
+  ExecutionStatusAggregate@T2 (event_count=12, phase=RUNNING)
+  ExecutionStatusAggregate@T3 (event_count=47, phase=COMPLETED)
+  → Each refresh creates NEW event, full timeline preserved
+```
+
+#### Why "Aggregate" Instead of "Projection"?
+
+The term **"Aggregate"** (from Domain-Driven Design) is more accurate because:
+
+1. **Domain-specific summarization**: Not just SQL aggregation, but domain logic and external enrichment
+2. **Event-first**: It's an event that happens to contain aggregated data
+3. **Temporal by nature**: The aggregate itself has a timeline, not just the underlying data
+4. **Enriched and self-contained**: Goes beyond summarizing internal events to capture external context
+
+#### Key Insight: Aggregates Have Their Own Timeline
+
+Unlike projections that only reflect current state, DSEL aggregates answer temporal queries about themselves:
+
+- "What did the execution summary show at 10:32 AM?" → Query aggregate events at that timestamp
+- "When did the aggregate first show phase=COMPLETED?" → Scan aggregate events for first occurrence
+- "How has the resource count changed over time according to aggregates?" → Chart aggregate events
+
+This makes aggregates themselves a valuable source of truth for understanding system behavior over time, not just a performance optimization.
 
 ---
 
@@ -984,9 +1175,9 @@ applied_event = query_event(event_type="ArtifactAppliedEvent", correlation_id=X)
 diff = compare(apply_event.spec.artifact, applied_event.spec.artifact)
 ```
 
-#### 7. Declarative API Experience
+#### 7. Natural Pairing with Declarative APIs
 
-Users benefit from Kubernetes-style workflows:
+While DSEL works with any API style, it pairs particularly well with declarative, manifest-driven workflows:
 
 ```bash
 # Edit manifest
@@ -1004,6 +1195,269 @@ platform-cli get artifact artifact-name
 # View history
 platform-cli history artifact artifact-name
 ```
+
+#### 8. GitOps Integration and Multiple Systems of Record
+
+DSEL pairs naturally with **GitOps workflows**, where YAML manifests stored in Git serve as the system of record for certain domain objects. This enables version-controlled, PR-approved infrastructure changes while maintaining a complete audit trail in the event store.
+
+**GitOps Workflow Integration:**
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer
+    participant Git as Git Repository
+    participant CI as CI/CD Pipeline
+    participant Platform as Platform API
+    participant EventStore as Event Store
+
+    Dev->>Git: 1. Edit deployment.yaml
+    Dev->>Git: 2. Create PR
+
+    Note over Git,CI: PR Review and Approval
+
+    Git->>CI: 3. PR merged to release branch
+    CI->>CI: 4. Checkout manifest
+    CI->>Platform: 5. platform-cli apply deployment.yaml
+
+    Platform->>Platform: 6. Validate manifest
+    Platform->>Platform: 7. Enrich with system metadata
+    Platform->>EventStore: 8. DeploymentAppliedEvent (effective state)
+
+    EventStore->>Platform: 9. Trigger execution
+    Platform->>EventStore: 10. DeploymentCompletedEvent
+```
+
+**System of Record Patterns:**
+
+Different domain objects may have different systems of record, and DSEL accommodates both patterns:
+
+**Pattern 1: Git as System of Record (GitOps)**
+
+For infrastructure-as-code domains like deployments, configurations, and artifacts:
+
+```yaml
+# deployment.yaml in Git (main branch = production)
+apiVersion: v1
+kind: Deployment
+meta:
+  name: prod-api
+  appId: "12345"
+spec:
+  replicas: 3
+  regions:
+    - us-east-1
+    - eu-west-1
+```
+
+**Characteristics:**
+- **Source of truth**: Git repository (specific branch for environment)
+- **Change process**: PR → Review → Approval → Merge → CI/CD pipeline applies
+- **Event store role**: Records **effective state** at execution time plus enrichment
+- **Reconciliation**: Platform can detect drift between Git and deployed state
+
+```python
+# Developer workflow
+# 1. Edit deployment.yaml locally
+# 2. git commit && git push
+# 3. Create PR to 'main' branch
+# 4. Team reviews, approves
+# 5. Merge triggers CI/CD pipeline
+# 6. Pipeline runs: platform-cli apply deployment.yaml --from-git
+
+# What gets stored in event store:
+{
+  "kind": "DeploymentAppliedEvent",
+  "spec": {
+    "deployment": {
+      # Full deployment manifest from Git
+      "replicas": 3,
+      "regions": ["us-east-1", "eu-west-1"]
+    },
+    "metadata": {
+      "gitCommit": "a3f9c82",
+      "gitBranch": "main",
+      "approvedBy": ["alice@example.com", "bob@example.com"],
+      "appliedFrom": "git",
+      "effectiveTime": "2025-01-15T10:30:00Z"
+    }
+  }
+}
+```
+
+**Benefits:**
+- **Version control**: Full Git history of infrastructure changes
+- **PR approval workflow**: Code review for infrastructure
+- **Rollback**: `git revert` + reapply manifest
+- **Audit trail**: Git + Event store = complete provenance
+- **Drift detection**: Compare Git state vs latest event
+
+**Pattern 2: Database as System of Record**
+
+For user-generated or system-generated domains like user registrations, runtime events:
+
+```yaml
+# User created via platform API (not from manifest)
+kind: UserRegisteredEvent
+meta:
+  eventId: evt-550e8400
+  timestamp: 2025-01-15T10:30:00Z
+  userId: user-123
+spec:
+  user:
+    email: alice@example.com
+    name: Alice
+    role: developer
+  metadata:
+    registrationSource: web-ui
+    ipAddress: 203.0.113.42
+```
+
+**Characteristics:**
+- **Source of truth**: Event store itself (latest event = current state)
+- **Change process**: API call → Validation → Event written
+- **No Git involvement**: State managed entirely through platform
+- **Reconciliation**: Not applicable (database IS the truth)
+
+**Hybrid Pattern: Git-Backed with Effective State Recording**
+
+This is where DSEL shines—supporting **both** GitOps and audit trail needs:
+
+```mermaid
+graph TB
+    subgraph Git_SOR[System of Record: Git]
+        G[deployment.yaml<br/>in Git repo]
+    end
+
+    subgraph EventStore_Audit[Audit Trail: Event Store]
+        E1[DeploymentAppliedEvent@T1<br/>from Git commit abc123]
+        E2[DeploymentAppliedEvent@T2<br/>from Git commit def456]
+        E3[DeploymentStatusChangedEvent@T3]
+        E4[DeploymentCompletedEvent@T4]
+    end
+
+    G -->|CI/CD applies| E1
+    G -->|Later: CI/CD applies update| E2
+    E2 -->|Triggers execution| E3
+    E3 -->|Completes| E4
+
+    style G fill:#fcf,stroke:#333,stroke-width:3px
+    style E1 fill:#9f9,stroke:#333
+    style E2 fill:#9f9,stroke:#333
+    style E4 fill:#9f9,stroke:#333
+```
+
+**Key Insight: Event Store Records "Effective State"**
+
+When Git is the system of record, the event store captures:
+
+1. **What was applied**: The manifest from Git at that commit
+2. **When it was applied**: Timestamp of execution
+3. **Who approved it**: PR reviewers, merger
+4. **System enrichment**: Validation results, effective configuration
+5. **Execution trail**: All subsequent status changes, completion
+
+```python
+# Reconciliation example: Detect drift between Git and platform
+
+def detect_drift(deployment_name):
+    """
+    Compare Git state (source of truth) with platform state (execution reality)
+    """
+
+    # Get desired state from Git
+    git_manifest = git_client.get_file('main', f'deployments/{deployment_name}.yaml')
+    desired_state = yaml.load(git_manifest)
+
+    # Get effective state from event store (what platform actually applied)
+    latest_event = get_latest_event(
+        domain_type='DEPLOYMENT',
+        name=deployment_name
+    )
+    effective_state = latest_event['spec']['deployment']
+
+    # Compare
+    drift = {
+        'has_drift': desired_state != effective_state,
+        'git_commit': git_client.get_latest_commit('main'),
+        'last_applied_commit': latest_event['spec']['metadata'].get('gitCommit'),
+        'differences': jsondiff(desired_state, effective_state)
+    }
+
+    if drift['has_drift']:
+        print(f"⚠️  Drift detected! Git is ahead of platform.")
+        print(f"Git commit: {drift['git_commit']}")
+        print(f"Last applied: {drift['last_applied_commit']}")
+        print(f"Run: platform-cli apply --from-git to reconcile")
+
+    return drift
+```
+
+**Environment-Specific GitOps:**
+
+```
+Git Repository Structure:
+├── deployments/
+│   ├── dev/
+│   │   └── api.yaml        # Dev environment (dev branch)
+│   ├── test/
+│   │   └── api.yaml        # Test environment (test branch)
+│   └── prod/
+│       └── api.yaml        # Prod environment (main branch)
+
+Workflow:
+1. Dev edits deployments/dev/api.yaml on feature branch
+2. Commits, pushes, merges to 'dev' branch
+3. CI/CD on 'dev' branch: platform-cli apply --env=dev api.yaml
+4. Event: DeploymentAppliedEvent (env=dev, gitBranch=dev)
+
+5. Promote to test: PR from 'dev' → 'test' branch
+6. Merge triggers: platform-cli apply --env=test api.yaml
+7. Event: DeploymentAppliedEvent (env=test, gitBranch=test)
+
+8. Promote to prod: PR from 'test' → 'main' (requires approvals)
+9. Merge triggers: platform-cli apply --env=prod api.yaml
+10. Event: DeploymentAppliedEvent (env=prod, gitBranch=main, approvedBy=[...])
+```
+
+**Choosing System of Record:**
+
+| Domain Type | Recommended SOR | Rationale |
+|-------------|----------------|-----------|
+| **Deployments** | Git | Version control, PR approvals, rollback capability |
+| **Infrastructure Configs** | Git | IaC best practices, peer review |
+| **Artifacts** | Git | Versioned artifact metadata, promote through environments |
+| **User Registrations** | Event Store | User-driven, no need for Git workflow |
+| **Runtime Events** | Event Store | System-generated, temporal only |
+| **Secrets References** | Git (ref only) | Git stores reference, vault stores value |
+| **Audit Events** | Event Store | Compliance, immutable by nature |
+
+**Benefits of Hybrid Approach:**
+
+1. **Best of both worlds**: Git's version control + event store's temporal history
+2. **Compliance**: Event store provides immutable audit trail even when Git is SOR
+3. **Debugging**: "What did we apply at 10:30 AM?" → Query event store
+4. **Rollback**: Git revert + reapply gives you previous state
+5. **Drift detection**: Compare Git (desired) vs events (effective)
+6. **Flexibility**: Different domains can use different SOR patterns
+
+**Example: Lower Environment Direct Apply vs Production GitOps**
+
+```bash
+# Development environment: Direct CLI apply (no Git required)
+# Developer iterates quickly without PR overhead
+platform-cli apply deployment.yaml --env=dev
+# Event: DeploymentAppliedEvent (appliedFrom=cli, env=dev)
+
+# Production environment: GitOps only (enforced)
+# Git is the ONLY way to change production
+git commit deployment.yaml
+git push origin feature-branch
+# Create PR to main → Requires approvals
+# After merge: CI/CD runs platform-cli apply --from-git --env=prod
+# Event: DeploymentAppliedEvent (appliedFrom=git, gitCommit=abc123, env=prod, approvedBy=[...])
+```
+
+This pattern gives teams **flexibility in lower environments** (fast iteration) while enforcing **governance in production** (GitOps with approvals), all tracked in the same event store.
 
 ### 9.2 Tradeoffs
 
@@ -2355,8 +2809,8 @@ executions = table.query(
 
 Domain State Event Logging (DSEL) represents a pragmatic evolution of event-driven persistence patterns, optimized for the unique requirements of platform engineering:
 
-1. **Full-State Capture**: Eliminates replay complexity while maintaining temporal history
-2. **Declarative Semantics**: Kubernetes-style API experience for platform users
+1. **Complete Domain State Storage**: Eliminates replay complexity while maintaining temporal history
+2. **Manifest-Friendly Design**: Pairs naturally with declarative APIs (Kubernetes-style) but works with any interaction model
 3. **Multi-Resolution Streams**: Efficient queries at different granularities via aggregates
 4. **Platform Evolution Without Breaking Changes**: New workflows, event types, and domain objects added without downtime, migrations, or impacting existing queries
 5. **Multi-Tier Read Architecture**: DAX for microsecond-latency critical reads, DynamoDB for consistency, OpenSearch for search/analytics with graceful fallback
@@ -2435,7 +2889,7 @@ Interesting extensions to explore:
 
 ### 13.5 Final Thoughts
 
-Domain State Event Logging emerged from building real production platforms, not from academic theory. It represents a pragmatic synthesis of Event Sourcing, CQRS, Domain-Driven Design, and declarative API patterns—optimized for the realities of modern platform engineering.
+Domain State Event Logging emerged from building real production platforms, not from academic theory. It represents a pragmatic synthesis of Domain-Driven Design and Event Sourcing principles, storing complete domain state rather than deltas—with optional CQRS-style aggregates for query optimization. While it pairs naturally with declarative APIs, the storage pattern is independent of the interaction model.
 
 The pattern's simplicity is its strength: full-state events, multi-dimensional keys, and optional aggregates. This simplicity enables rapid development, easy debugging, and confident evolution—critical for platforms that must adapt to changing business requirements.
 
