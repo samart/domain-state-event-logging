@@ -97,12 +97,10 @@ graph LR
 ```
 
 **Challenges for Platform Engineering:**
-- 💭 **No temporal history**: Updates overwrite previous state—you can add audit tables, but now you're maintaining two models
+- 💭 **No temporal history**: Updates overwrite previous state—temporal queries require separate audit tables
 - 💭 **No intent vs. outcome**: Can't distinguish what user requested vs. what system applied—requires separate request logging
 - 💭 **Schema migrations**: Adding new domain objects requires schema changes and data migrations
-- 💭 **Audit trail overhead**: Need separate audit system (triggers, shadow tables, CDC)
-
-**Can you make it work?** Yes, but requires additional infrastructure (audit tables, CDC pipelines, migration tooling).
+- 💭 **Audit trail overhead**: Requires additional infrastructure (audit tables, CDC pipelines, migration tooling)
 
 #### Event Sourcing
 ```mermaid
@@ -115,12 +113,11 @@ graph LR
 ```
 
 **Challenges for Platform Engineering:**
-- 💭 **Replay complexity**: Getting current state requires replaying all events—can optimize with snapshots, but adds complexity
-- 💭 **Performance degradation**: Query time grows with event history—mitigated by periodic snapshots, but requires snapshot management
-- 💭 **Schema evolution**: Old event versions must be upconverted during replay—manageable but requires careful versioning
-- 💭 **Historical queries**: "What was state at T-1000?" still requires replay up to that point
-
-**Can you make it work?** Absolutely—many production systems do. But requires replay optimization, snapshot strategies, and event versioning infrastructure.
+- 💭 **Replay complexity**: Getting current state requires replaying all events—typically optimized with snapshots
+- 💭 **Performance degradation**: Query time grows with event history—requires periodic snapshot management
+- 💭 **Schema evolution**: Old event versions must be upconverted during replay—requires careful versioning strategy
+- 💭 **Historical queries**: "What was state at T-1000?" requires replay from most recent snapshot to that point
+- 💭 **Infrastructure**: Requires replay optimization, snapshot strategies, and event versioning infrastructure
 
 #### CQRS (Command Query Responsibility Segregation)
 ```mermaid
@@ -137,12 +134,11 @@ graph TB
 ```
 
 **Challenges for Platform Engineering:**
-- 💭 **Projection maintenance**: Each query pattern needs its own read model—can be hundreds for complex platforms
-- 💭 **Synchronization complexity**: Keeping projections up-to-date with event stream—requires robust stream processing
-- 💭 **Eventual consistency**: Read models lag behind writes—manageable but requires careful UX design
+- 💭 **Projection maintenance**: Each query pattern needs its own read model—complex platforms can have hundreds
+- 💭 **Synchronization complexity**: Keeping projections up-to-date with event stream—requires robust stream processing infrastructure
+- 💭 **Eventual consistency**: Read models lag behind writes—requires careful UX design
 - 💭 **New read models**: Adding new query patterns requires building and backfilling projections from event history
-
-**Can you make it work?** Yes, and it scales well. But the operational overhead of maintaining multiple projections can outweigh the benefits for platform engineering use cases.
+- 💭 **Operational overhead**: Maintaining multiple projections adds operational complexity
 
 #### The Platform Engineering Reality
 
