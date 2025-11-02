@@ -1373,22 +1373,35 @@ This is where DSEL shines—supporting **both** GitOps and audit trail needs:
 ```mermaid
 graph TB
     subgraph Git_SOR[System of Record: Git]
-        G[deployment.yaml<br/>in Git repo]
+        Dev["Developer<br/>creates PR"]
+        PR["Pull Request<br/>deployment.yaml"]
+        Review["Code Review<br/>and Approval"]
+        Main["main branch<br/>deployment.yaml"]
+    end
+
+    subgraph CI_CD[CI/CD Pipeline]
+        Pipeline["CI/CD<br/>applies to platform"]
     end
 
     subgraph EventStore_Audit[Audit Trail: Event Store]
-        E1[DeploymentAppliedEvent@T1<br/>from Git commit abc123]
-        E2[DeploymentAppliedEvent@T2<br/>from Git commit def456]
-        E3[DeploymentStatusChangedEvent@T3]
-        E4[DeploymentCompletedEvent@T4]
+        E1["DeploymentAppliedEvent (T1)<br/>from Git commit abc123<br/>approver: alice"]
+        E2["DeploymentAppliedEvent (T2)<br/>from Git commit def456<br/>approver: bob"]
+        E3["DeploymentStatusChangedEvent (T3)"]
+        E4["DeploymentCompletedEvent (T4)"]
     end
 
-    G -->|CI/CD applies| E1
-    G -->|Later: CI/CD applies update| E2
+    Dev --> PR
+    PR --> Review
+    Review -->|Approved and merged| Main
+    Main --> Pipeline
+    Pipeline -->|First deployment| E1
+    Main -->|Later: update merged| Pipeline
+    Pipeline -->|Updated deployment| E2
     E2 -->|Triggers execution| E3
     E3 -->|Completes| E4
 
-    style G fill:#fcf,stroke:#333,stroke-width:3px
+    style Main fill:#fcf,stroke:#333,stroke-width:3px
+    style Review fill:#ff9,stroke:#333,stroke-width:2px
     style E1 fill:#9f9,stroke:#333
     style E2 fill:#9f9,stroke:#333
     style E4 fill:#9f9,stroke:#333
